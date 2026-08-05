@@ -302,16 +302,16 @@ void Actuator::updateLedStrip()
       break;
     }
     case LED_MODE_STATUS:
-      // commercial FC convention: failsafe = fast blink, disarmed = slow blink,
-      // armed keeps the group orientation colors; ANGLE = running lights (front
-      // swipe), ACRO = breathing fade
+      // commercial FC convention: failsafe = fast blink, disarmed = fancy idle
+      // wave, armed keeps the group orientation colors; ANGLE = back legs solid
+      // with front legs flashing together, ACRO = front swipe
       if(_model.isModeActive(MODE_FAILSAFE))
       {
         _model.state.ledStrip.setStatus(Connect::LED_ERROR);
       }
       else if(_model.isModeActive(MODE_ARMED) || _model.state.mode.isLongClickActive())
       {
-        _model.state.ledStrip.setStatus(_model.isModeActive(MODE_ANGLE) ? Connect::LED_SWEEP : Connect::LED_FADE);
+        _model.state.ledStrip.setStatus(_model.isModeActive(MODE_ANGLE) ? Connect::LED_ANGLE : Connect::LED_SWEEP);
       }
       else if(_model.armingDisabled())
       {
@@ -319,7 +319,7 @@ void Actuator::updateLedStrip()
       }
       else
       {
-        _model.state.ledStrip.setStatus(Connect::LED_OK);
+        _model.state.ledStrip.setStatus(Connect::LED_IDLE);
       }
       break;
     case LED_MODE_POSITION:
