@@ -33,8 +33,8 @@ public:
 private:
   void _render(uint8_t val);
   void _write(uint8_t val);
-  int32_t _orbitDist(size_t i) const;
-  uint8_t _bandBrightness(size_t i, int32_t center) const;
+  int32_t _frontPos(size_t i) const;
+  uint8_t _bandBrightness(size_t i, int32_t pos) const;
   int8_t _pin;
   uint8_t _type;
   uint8_t _invert;

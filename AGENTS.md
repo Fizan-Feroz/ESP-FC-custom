@@ -31,7 +31,7 @@ set led_idle 0,0,0
 set feature_soft_serial 1  # WiFi always on at boot
 ```
 Group → LED mapping (count 28, groups 4): LEDs 0-6 front-left (white), 7-13 front-right (red), 14-20 back-right (blue), 21-27 back-left (green). Racing scheme: white+red = front, blue+green = back.
-LED behavior (STATUS mode, Betaflight-style): **disarmed** = slow blink (100ms on/900ms off) of group colors; **armed + ANGLE** = 250ms full-bright arm flash then a running-light band orbits the frame in data order (front-left → front-right → back-right → back-left), peaking as it crosses the nose each 1.8s cycle — doubles as a front-direction swipe; **armed + ACRO** = arm flash then group colors slowly fade in/out (2s period, 40ms step, dims fully to off); **disarm** = last frame fades out over 400ms before the slow blink resumes; **failsafe or arming-blocked** = fast triple-blink. POSITION mode = steady group colors, AUX mode = strip on/off by an aux channel.
+LED behavior (STATUS mode, Betaflight-style): **disarmed** = slow blink (100ms on/900ms off) of group colors; **armed + ANGLE** = 250ms full-bright arm flash then a wave starts at the back seam and sweeps forward along BOTH sides at once, holding bright at the nose for 400ms (front-direction swipe, ~1.6s cycle); **armed + ACRO** = arm flash then group colors slowly fade in/out (2s period, 40ms step, dims fully to off); **disarm** = last frame fades out over 400ms before the slow blink resumes; **failsafe or arming-blocked** = fast triple-blink. POSITION mode = steady group colors, AUX mode = strip on/off by an aux channel.
 
 ## Wiring (actual build)
 - FS-R6B PWM receiver CH1-6 → GPIO 32, 33, 34, 35, 26, 14 (Roll, Pitch, Throttle, Yaw, Aux1, Aux2). See `docs/pwm-receiver.md`.

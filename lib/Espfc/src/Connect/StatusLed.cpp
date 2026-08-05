@@ -108,12 +108,15 @@ static constexpr uint32_t ARM_FLASH_MS = 250;
 // Disarm fade-out: strip dims to off over this time before the slow blink resumes.
 static constexpr uint32_t DISARM_FADE_MS = 400;
 
-// Running lights / front swipe (armed ANGLE): a highlight band orbits the frame
-// in data order (front-left -> front-right -> back-right -> back-left), peaking
-// as it crosses the nose each cycle. Band radius in LEDs (bright core + taper).
-static constexpr uint32_t SWEEP_PERIOD_MS = 1800;
+// Front swipe (armed ANGLE): a wave starts at the back of the frame and sweeps
+// forward along BOTH sides at once, holding bright at the nose for a moment so
+// the front direction is obvious. Frontness f runs 0 (back seam) to 2*gs-1
+// (front seam between the two front legs). Both sides share the same f, so a
+// band at position pos lights the back legs + front legs together toward front.
+static constexpr uint32_t SWEEP_UP_MS = 1200;
+static constexpr uint32_t SWEEP_HOLD_MS = 400;
 static constexpr uint32_t SWEEP_STEP_MS = 20;
-static constexpr uint32_t BAND_RADIUS = 3;
+static constexpr uint32_t BAND_RADIUS = 2;
 
 StatusLed::StatusLed()
     : _pin(-1), _type(0), _invert(0), _count(0), _groups(1), _alpha(255), _fadeStart(0), _lastFade(0),
@@ -283,23 +286,23 @@ void StatusLed::_write(uint8_t val)
   _render(val);
 }
 
-int32_t StatusLed::_orbitDist(size_t i) const
+int32_t StatusLed::_frontPos(size_t i) const
 {
-  // distance (in LEDs) clockwise around the frame from the front seam. The seam
-  // is the boundary between the two front legs at i = count/2 - 1. Data order is
-  // front-left -> front-right -> back-right -> back-left, so the orbit wraps
-  // seamlessly across the back.
-  int32_t d = (int32_t)i - ((int32_t)_count / 2 - 1);
-  if (d < 0) d += _count;
-  return d;
+  // Position along the back->front path of each side, in steps. f=0 is the back
+  // seam (where the two back legs meet), f=2*gs-1 is the front seam (between the
+  // two front legs). Left side runs BL then FL, right side runs BR then FR, both
+  // ending at the front seam. gs = LEDs per leg = count / 4.
+  int32_t gs = (int32_t)_count / 4;
+  if (i < (size_t)gs)       return (int32_t)i + gs;       // FL, front end at i=gs-1
+  if (i < (size_t)(2 * gs)) return 3 * gs - 1 - (int32_t)i; // FR, front end at i=gs
+  if (i < (size_t)(3 * gs)) return 3 * gs - 1 - (int32_t)i; // BR, front end at i=2gs
+  return (int32_t)i - 3 * gs;                              // BL, front end at i=4gs-1
 }
 
-uint8_t StatusLed::_bandBrightness(size_t i, int32_t center) const
+uint8_t StatusLed::_bandBrightness(size_t i, int32_t pos) const
 {
-  int32_t d1 = _orbitDist(i) - center;
-  if (d1 < 0) d1 = -d1;
-  int32_t d2 = (int32_t)_count - d1;
-  int32_t dist = d1 < d2 ? d1 : d2;
+  int32_t dist = _frontPos(i) - pos;
+  if (dist < 0) dist = -dist;
   if (dist > (int32_t)BAND_RADIUS) return 0;
   return (uint8_t)((BAND_RADIUS - dist) * 255 / BAND_RADIUS);
 }
@@ -313,18 +316,20 @@ void StatusLed::_render(uint8_t val)
   {
     if (_count == 0) return;
     bool sweep = (_status == LED_SWEEP) && (millis() >= _flashUntil);
-    int32_t center = 0;
+    int32_t pos = 0;
     if (sweep)
     {
-      uint32_t phase = (millis() - _sweepStart) % SWEEP_PERIOD_MS;
-      center = (int32_t)(phase * _count) / (int32_t)SWEEP_PERIOD_MS;
+      uint32_t cycle = SWEEP_UP_MS + SWEEP_HOLD_MS;
+      int32_t frontMax = 2 * (int32_t)(_count / 4) - 1;
+      uint32_t ph = (millis() - _sweepStart) % cycle;
+      pos = (ph < SWEEP_UP_MS) ? (int32_t)(ph * frontMax / SWEEP_UP_MS) : frontMax;
     }
     for (size_t i = 0; i < _count; i++)
     {
       size_t g = (_groups * i) / _count;
       const uint8_t* c = val ? _colors[g] : _colorIdle;
       uint32_t mult = _alpha;
-      if (sweep) mult = (uint32_t)_alpha * _bandBrightness(i, center) / 255;
+      if (sweep) mult = (uint32_t)_alpha * _bandBrightness(i, pos) / 255;
       ws_pixels[i].r = (uint16_t)c[0] * mult / 255;
       ws_pixels[i].g = (uint16_t)c[1] * mult / 255;
       ws_pixels[i].b = (uint16_t)c[2] * mult / 255;
