@@ -18,6 +18,7 @@ enum LedStatus
   LED_ERROR,
   LED_ON,
   LED_FADE,
+  LED_SWEEP,
 };
 
 class StatusLed
@@ -30,7 +31,10 @@ public:
   void setStatus(LedStatus newStatus, bool force = false);
 
 private:
+  void _render(uint8_t val);
   void _write(uint8_t val);
+  int32_t _orbitDist(size_t i) const;
+  uint8_t _bandBrightness(size_t i, int32_t center) const;
   int8_t _pin;
   uint8_t _type;
   uint8_t _invert;
@@ -41,6 +45,13 @@ private:
   uint8_t _alpha;
   uint32_t _fadeStart;
   uint32_t _lastFade;
+  uint32_t _sweepStart;
+  uint32_t _lastSweep;
+  uint32_t _flashUntil;
+  uint32_t _disarmStart;
+  uint8_t _disarmFromAlpha;
+  uint8_t _lastVal;
+  uint8_t _lastAlpha;
   LedStatus _status;
   uint32_t _next;
   bool _state;

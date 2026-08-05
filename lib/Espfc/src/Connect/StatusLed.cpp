@@ -102,8 +102,22 @@ static constexpr uint32_t FADE_PERIOD_MS = 2000;
 static constexpr uint32_t FADE_STEP_MS = 40;
 static constexpr uint32_t FADE_MIN = 0;
 
+// Arm flash: full-bright solid flash for this long after arming.
+static constexpr uint32_t ARM_FLASH_MS = 250;
+
+// Disarm fade-out: strip dims to off over this time before the slow blink resumes.
+static constexpr uint32_t DISARM_FADE_MS = 400;
+
+// Running lights / front swipe (armed ANGLE): a highlight band orbits the frame
+// in data order (front-left -> front-right -> back-right -> back-left), peaking
+// as it crosses the nose each cycle. Band radius in LEDs (bright core + taper).
+static constexpr uint32_t SWEEP_PERIOD_MS = 1800;
+static constexpr uint32_t SWEEP_STEP_MS = 20;
+static constexpr uint32_t BAND_RADIUS = 3;
+
 StatusLed::StatusLed()
     : _pin(-1), _type(0), _invert(0), _count(0), _groups(1), _alpha(255), _fadeStart(0), _lastFade(0),
+      _sweepStart(0), _lastSweep(0), _flashUntil(0), _disarmStart(0), _disarmFromAlpha(0), _lastVal(0),
       _status(LED_OFF), _next(0), _state(LOW), _step(0), _pattern(LED_OFF_PATTERN)
 {
   static const uint8_t defaults[4][3] = { { 255, 255, 255 }, { 255, 40, 40 }, { 40, 255, 40 }, { 40, 40, 255 } };
@@ -148,6 +162,9 @@ void StatusLed::setStatus(LedStatus newStatus, bool force)
   if (_pin == -1) return;
   if (!force && newStatus == _status) return;
 
+  uint8_t prevAlpha = _alpha;
+  uint8_t prevVal = _lastVal;
+
   _status = newStatus;
   _state = LOW;
   _step = 0;
@@ -158,6 +175,13 @@ void StatusLed::setStatus(LedStatus newStatus, bool force)
   {
     case LED_OK:
       _pattern = LED_OK_PATTERN;
+      // fading out of an armed state? dim the last frame before the slow blink.
+      if (prevVal)
+      {
+        _disarmStart = _next;
+        _disarmFromAlpha = prevAlpha;
+        return;
+      }
       break;
     case LED_ERROR:
       _pattern = LED_ERROR_PATTERN;
@@ -166,11 +190,19 @@ void StatusLed::setStatus(LedStatus newStatus, bool force)
       _pattern = LED_ON_PATTERN;
       _state = HIGH;
       break;
+    case LED_SWEEP:
+      _pattern = LED_ON_PATTERN;
+      _state = HIGH;
+      _sweepStart = _next;
+      _lastSweep = _next;
+      _flashUntil = _next + ARM_FLASH_MS;
+      break;
     case LED_FADE:
       _pattern = LED_ON_PATTERN;
       _state = HIGH;
       _fadeStart = _next;
       _lastFade = _next;
+      _flashUntil = _next + ARM_FLASH_MS;
       break;
     case LED_OFF:
     default:
@@ -186,8 +218,40 @@ void StatusLed::update()
 
   uint32_t now = millis();
 
+  // disarm fade-out: dim the last armed frame to off before the slow blink resumes
+  if (_status == LED_OK && _disarmStart)
+  {
+    uint32_t dt = now - _disarmStart;
+    if (dt >= DISARM_FADE_MS)
+    {
+      _disarmStart = 0;
+      _alpha = 255;
+      _write(_state);
+      return;
+    }
+    _alpha = _disarmFromAlpha - (dt * _disarmFromAlpha) / DISARM_FADE_MS;
+    _render(HIGH);
+    return;
+  }
+
+  // armed ANGLE: running lights / front swipe around the frame
+  if (_status == LED_SWEEP)
+  {
+    if (now - _lastSweep < SWEEP_STEP_MS) return;
+    _lastSweep = now;
+    _render(_state);
+    return;
+  }
+
+  // armed ACRO: breathing fade
   if (_status == LED_FADE)
   {
+    if (now < _flashUntil)
+    {
+      _lastFade = now;
+      _fadeStart = now;
+      return;
+    }
     if (now - _lastFade < FADE_STEP_MS) return;
     uint32_t phase = (now - _fadeStart) % FADE_PERIOD_MS;
     uint32_t half = FADE_PERIOD_MS / 2;
@@ -216,17 +280,54 @@ void StatusLed::update()
 
 void StatusLed::_write(uint8_t val)
 {
+  _render(val);
+}
+
+int32_t StatusLed::_orbitDist(size_t i) const
+{
+  // distance (in LEDs) clockwise around the frame from the front seam. The seam
+  // is the boundary between the two front legs at i = count/2 - 1. Data order is
+  // front-left -> front-right -> back-right -> back-left, so the orbit wraps
+  // seamlessly across the back.
+  int32_t d = (int32_t)i - ((int32_t)_count / 2 - 1);
+  if (d < 0) d += _count;
+  return d;
+}
+
+uint8_t StatusLed::_bandBrightness(size_t i, int32_t center) const
+{
+  int32_t d1 = _orbitDist(i) - center;
+  if (d1 < 0) d1 = -d1;
+  int32_t d2 = (int32_t)_count - d1;
+  int32_t dist = d1 < d2 ? d1 : d2;
+  if (dist > (int32_t)BAND_RADIUS) return 0;
+  return (uint8_t)((BAND_RADIUS - dist) * 255 / BAND_RADIUS);
+}
+
+void StatusLed::_render(uint8_t val)
+{
+  _lastVal = val;
+  _lastAlpha = _alpha;
 #ifdef ESPFC_LED_WS2812
   if (_type == LED_STRIP)
   {
     if (_count == 0) return;
+    bool sweep = (_status == LED_SWEEP) && (millis() >= _flashUntil);
+    int32_t center = 0;
+    if (sweep)
+    {
+      uint32_t phase = (millis() - _sweepStart) % SWEEP_PERIOD_MS;
+      center = (int32_t)(phase * _count) / (int32_t)SWEEP_PERIOD_MS;
+    }
     for (size_t i = 0; i < _count; i++)
     {
       size_t g = (_groups * i) / _count;
       const uint8_t* c = val ? _colors[g] : _colorIdle;
-      ws_pixels[i].r = (uint16_t)c[0] * _alpha / 255;
-      ws_pixels[i].g = (uint16_t)c[1] * _alpha / 255;
-      ws_pixels[i].b = (uint16_t)c[2] * _alpha / 255;
+      uint32_t mult = _alpha;
+      if (sweep) mult = (uint32_t)_alpha * _bandBrightness(i, center) / 255;
+      ws_pixels[i].r = (uint16_t)c[0] * mult / 255;
+      ws_pixels[i].g = (uint16_t)c[1] * mult / 255;
+      ws_pixels[i].b = (uint16_t)c[2] * mult / 255;
     }
     ws2812_update(_count);
   }
