@@ -3,17 +3,26 @@
 #include <Arduino.h>
 
 #ifdef ESPFC_LED_WS2812
-#include "driver/i2s.h"
+#include "driver/rmt.h"
 
-// https://docs.espressif.com/projects/esp-idf/en/v4.4.4/esp32/api-reference/peripherals/i2s.html
-// https://github.com/vunam/esp32-i2s-ws2812/blob/master/ws2812.c
+// RMT-based WS2812 driver. A single ESP32 RMT channel can hold only 64 items
+// (1 LED = 48 items), so each LED is written as its own chunk. The line idles
+// low between chunks and the gap stays far below the ~50us reset threshold,
+// so the strip never latches mid-frame.
+// Timings follow the WS2812B 800kHz spec: 0 = 350ns high / 850ns low,
+// 1 = 850ns high / 350ns low, frame reset >= 50us low.
 
 static constexpr size_t LED_MAX = 32;
-static constexpr size_t PIXEL_SIZE = 12; // each colour takes 4 bytes in buffer
-static constexpr size_t ZERO_BUFFER = 32;
-static constexpr size_t SIZE_BUFFER = LED_MAX * PIXEL_SIZE + ZERO_BUFFER;
-static constexpr uint32_t SAMPLE_RATE = 93750;
-static constexpr i2s_port_t I2S_NUM = I2S_NUM_0;
+static constexpr size_t PIXEL_BITS = 24;
+static constexpr size_t CHUNK_SIZE = PIXEL_BITS * 2 + 1; // 48 edges + reset
+
+// APB clock 80MHz / 4 = 20MHz -> 50ns per tick
+static constexpr uint32_t RMT_CLK_DIV = 4;
+static constexpr uint32_t T0H = 7;     // 350ns
+static constexpr uint32_t T0L = 17;    // 850ns
+static constexpr uint32_t T1H = 17;    // 850ns
+static constexpr uint32_t T1L = 7;     // 350ns
+static constexpr uint32_t RESET = 1200; // 60us
 
 struct ws2812_pixel_t
 {
@@ -22,66 +31,61 @@ struct ws2812_pixel_t
   uint8_t b;
 };
 
-static i2s_config_t i2s_config = {
-    .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
-    .sample_rate = SAMPLE_RATE,
-    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-    .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-    .communication_format = I2S_COMM_FORMAT_STAND_MSB,
-    .intr_alloc_flags = 0,
-    .dma_buf_count = 2,
-    .dma_buf_len = SIZE_BUFFER / 2,
-    .use_apll = false,
-    .tx_desc_auto_clear = false,
-    .fixed_mclk = 0,
-    .mclk_multiple = I2S_MCLK_MULTIPLE_DEFAULT,
-    .bits_per_chan = I2S_BITS_PER_CHAN_DEFAULT,
-};
-
-static i2s_pin_config_t pin_config = {.bck_io_num = -1, .ws_io_num = -1, .data_out_num = -1, .data_in_num = -1};
-
-static uint8_t out_buffer[SIZE_BUFFER] = {0};
+static rmt_item32_t chunk[CHUNK_SIZE];
 static ws2812_pixel_t ws_pixels[LED_MAX] = {};
+static rmt_channel_t ws2812_channel = RMT_CHANNEL_0;
+static bool ws2812_ready = false;
 
-static const uint16_t bitpatterns[4] = {0x88, 0x8e, 0xe8, 0xee};
+static rmt_item32_t ws2812_make_item(uint32_t level0, uint32_t duration0, uint32_t level1, uint32_t duration1)
+{
+  rmt_item32_t item;
+  item.level0 = level0;
+  item.duration0 = duration0;
+  item.level1 = level1;
+  item.duration1 = duration1;
+  return item;
+}
 
 static void ws2812_init(int8_t pin)
 {
-  pin_config.data_out_num = pin;
-  i2s_driver_install(I2S_NUM, &i2s_config, 0, nullptr);
-  i2s_set_pin(I2S_NUM, &pin_config);
-  i2s_zero_dma_buffer(I2S_NUM);
-  std::fill_n(out_buffer, SIZE_BUFFER, 0);
+  ws2812_channel = (rmt_channel_t)(RMT_CHANNEL_MAX - 1);
+  rmt_config_t conf = RMT_DEFAULT_CONFIG_TX((gpio_num_t)pin, ws2812_channel);
+  conf.clk_div = RMT_CLK_DIV;
+  conf.tx_config.loop_en = false;
+  conf.tx_config.carrier_en = false;
+  conf.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
+  conf.tx_config.idle_output_en = true;
+  if (rmt_config(&conf) != ESP_OK) return;
+  if (rmt_driver_install(ws2812_channel, 0, 0) != ESP_OK) return;
+  ws2812_ready = true;
 }
 
-static void ws2812_write_pixel(uint8_t* buffer, const ws2812_pixel_t& pixel)
+static void ws2812_write_pixel(const ws2812_pixel_t& data, bool last)
 {
-  *buffer++ = bitpatterns[pixel.g >> 6 & 0x03];
-  *buffer++ = bitpatterns[pixel.g >> 4 & 0x03];
-  *buffer++ = bitpatterns[pixel.g >> 2 & 0x03];
-  *buffer++ = bitpatterns[pixel.g >> 0 & 0x03];
-
-  *buffer++ = bitpatterns[pixel.r >> 6 & 0x03];
-  *buffer++ = bitpatterns[pixel.r >> 4 & 0x03];
-  *buffer++ = bitpatterns[pixel.r >> 2 & 0x03];
-  *buffer++ = bitpatterns[pixel.r >> 0 & 0x03];
-
-  *buffer++ = bitpatterns[pixel.b >> 6 & 0x03];
-  *buffer++ = bitpatterns[pixel.b >> 4 & 0x03];
-  *buffer++ = bitpatterns[pixel.b >> 2 & 0x03];
-  *buffer++ = bitpatterns[pixel.b >> 0 & 0x03];
-}
-
-static void ws2812_update()
-{
-  size_t bytes_written = 0;
-  for (size_t i = 0; i < LED_MAX; i++)
+  const uint8_t bytes[3] = { data.g, data.r, data.b };
+  size_t idx = 0;
+  for (size_t c = 0; c < 3; c++)
   {
-    size_t loc = i * PIXEL_SIZE;
-    ws2812_write_pixel(out_buffer + loc, ws_pixels[i]);
+    for (int32_t b = 7; b >= 0; b--)
+    {
+      bool one = (bytes[c] >> b) & 0x01;
+      chunk[idx++] = ws2812_make_item(1, one ? T1H : T0H, 0, one ? T1L : T0L);
+    }
   }
-  i2s_zero_dma_buffer(I2S_NUM);
-  i2s_write(I2S_NUM, out_buffer, SIZE_BUFFER, &bytes_written, portMAX_DELAY);
+  if (last)
+  {
+    chunk[idx++] = ws2812_make_item(0, RESET, 0, 0);
+  }
+  rmt_write_items(ws2812_channel, chunk, idx, true);
+}
+
+static void ws2812_update(uint8_t count)
+{
+  if (!ws2812_ready) return;
+  for (size_t i = 0; i < count; i++)
+  {
+    ws2812_write_pixel(ws_pixels[i], i + 1 == count);
+  }
 }
 
 #endif
@@ -200,7 +204,7 @@ void StatusLed::_write(uint8_t val)
       ws_pixels[i].g = c[1];
       ws_pixels[i].b = c[2];
     }
-    ws2812_update();
+    ws2812_update(_count);
   }
   else if (_type == LED_SIMPLE) digitalWrite(_pin, val ^ _invert);
   else return;

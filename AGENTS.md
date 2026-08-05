@@ -21,7 +21,7 @@ set serial_2 0 115200 0    # frees GPIO 16 (was RX_SERIAL) for LED strip
 set pin_buzzer -1          # frees GPIO 26 for PWM ch5
 set pin_spi_cs_1 -1        # frees GPIO 13 (was SPI baro CS) for motor 4
 set pin_output_3 13        # motor 4 (out0..3 = 27, 25, 4, 13)
-set pin_led_strip 16       # WS2812 strip (I2S)
+set pin_led_strip 16       # WS2812 strip (RMT, one LED per chunk)
 set led_count 24
 set led_groups 4
 set led_mode POSITION      # POSITION | STATUS | AUX
@@ -40,4 +40,5 @@ Group → LED mapping (count 24, groups 4): LEDs 0-5 front-left, 6-11 front-righ
 ## Gotchas
 - Configurator **Save & Reboot** or factory reset wipes the CLI-only params above (`pin_input_pwm_*`, `serial_1`, etc.) — the Receiver tab then falls back to 12 dead channels. Re-apply via CLI and reboot (input device is chosen at boot).
 - MPU6050 intermittently fails to detect at boot; i2c errors count toward arming-block (NO_GYRO). Pending test: `set i2c_speed 100`, short solid-core I2C wires, shared ground, 100 nF cap on MPU VCC.
+- LED strip showed all-white with the old I2S WS2812 driver (`StatusLed.cpp`); replaced with RMT (channel `RMT_CHANNEL_MAX-1`, 50 ns ticks, 350/850 ns bit edges, per-LED chunks because one ESP32 RMT channel holds only 64 items). Verified: FastLED probe lit the strip correctly, and the RMT FC firmware shows the 4 group colors.
 - Strapping pins 0/2/5/12/15: avoid as inputs.
