@@ -39,7 +39,7 @@ LED behavior (STATUS mode, Betaflight-style): **disarmed** = slow blink (100ms o
 - LED strip data → GPIO 16 (24 pixels, 4 legs in series).
 
 ## Gotchas
-- Configurator **Save & Reboot** or factory reset wipes the CLI-only params above (`pin_input_pwm_*`, `serial_1`, etc.) — the Receiver tab then falls back to 12 dead channels. Re-apply via CLI and reboot (input device is chosen at boot).
+- Configurator **Save & Reboot** or factory reset wipes the CLI-only params above (`pin_input_pwm_*`, `serial_1`, etc.) — the Receiver tab then falls back to 12 dead channels. Re-apply via CLI and reboot (input device is chosen at boot). `led_mode` also reverts to `POSITION` after a Configurator session (strip stays solid, no blink) — re-apply `set led_mode STATUS`.
 - MPU6050 intermittently fails to detect at boot; i2c errors count toward arming-block (NO_GYRO). Pending test: `set i2c_speed 100`, short solid-core I2C wires, shared ground, 100 nF cap on MPU VCC.
 - LED strip showed all-white with the old I2S WS2812 driver (`StatusLed.cpp`); replaced with RMT (channel `RMT_CHANNEL_MAX-1`, 50 ns ticks, 350/850 ns bit edges, per-LED chunks because one ESP32 RMT channel holds only 64 items). Verified: FastLED probe lit the strip correctly, and the RMT FC firmware shows the 4 group colors.
 - Strapping pins 0/2/5/12/15: avoid as inputs.
