@@ -4,6 +4,7 @@
 #include "Utils/Math.hpp"
 #include "Device/InputDevice.h"
 #include "Device/InputPPM.h"
+#include "Device/InputPWM.h"
 #include "Device/InputIBUS.hpp"
 #include "Device/InputSBUS.h"
 #include "Device/InputCRSF.h"
@@ -62,6 +63,7 @@ class Input
     Utils::Filter _filter[INPUT_CHANNELS];
     float _step;
     Device::InputPPM _ppm;
+    Device::InputPWM _pwm;
     Device::InputIBUS _ibus;
     Device::InputSBUS _sbus;
     Device::InputCRSF _crsf;

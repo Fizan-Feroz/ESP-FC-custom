@@ -1,5 +1,6 @@
 #pragma once
 
+#include <driver/gpio.h>
 #include "Device/SerialDevice.h"
 
 #define ESPFC_WIFI
@@ -37,6 +38,12 @@ inline int targetI2CInit(T& dev, int8_t sda, int8_t scl, uint32_t speed)
 {
   dev.begin(sda, scl, speed);
   dev.setTimeout(50);
+  // The ESP32 hardware I2C peripheral does not enable internal pullups,
+  // unlike the software bit-bang path (EspWire) which used INPUT_PULLUP.
+  // Without pullups on SDA/SCL every transfer times out unless the sensor
+  // modules provide their own.
+  gpio_set_pull_mode((gpio_num_t)sda, GPIO_PULLUP_ONLY);
+  gpio_set_pull_mode((gpio_num_t)scl, GPIO_PULLUP_ONLY);
   return 1;
 }
 

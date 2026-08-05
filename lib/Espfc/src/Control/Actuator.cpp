@@ -278,6 +278,52 @@ void Actuator::updateRescueConfig()
 
 void Actuator::updateLed()
 {
+  updateLedStrip();
+  updateStatusLed();
+}
+
+void Actuator::updateLedStrip()
+{
+  const LedConfig& led = _model.config.led;
+  if(led.count == 0) return;
+
+  switch(led.mode)
+  {
+    case LED_MODE_AUX:
+    {
+      size_t ch = led.auxCh + AXIS_AUX_1;
+      if(ch < AXIS_AUX_1 || ch >= AXIS_COUNT)
+      {
+        _model.state.ledStrip.setStatus(Connect::LED_OFF);
+        break;
+      }
+      int16_t val = _model.state.input.us[ch];
+      _model.state.ledStrip.setStatus((val > led.auxMin && val < led.auxMax) ? Connect::LED_ON : Connect::LED_OFF);
+      break;
+    }
+    case LED_MODE_STATUS:
+      if(_model.isModeActive(MODE_ARMED) || _model.state.mode.isLongClickActive())
+      {
+        _model.state.ledStrip.setStatus(Connect::LED_ON);
+      }
+      else if(_model.armingDisabled())
+      {
+        _model.state.ledStrip.setStatus(Connect::LED_ERROR);
+      }
+      else
+      {
+        _model.state.ledStrip.setStatus(Connect::LED_OK);
+      }
+      break;
+    case LED_MODE_POSITION:
+    default:
+      _model.state.ledStrip.setStatus(Connect::LED_ON);
+      break;
+  }
+}
+
+void Actuator::updateStatusLed()
+{
   if(_model.isModeActive(MODE_ARMED) || _model.state.mode.isLongClickActive())
   {
     if(_model.state.mode.isLongClickActive()) _model.setGpsHome();

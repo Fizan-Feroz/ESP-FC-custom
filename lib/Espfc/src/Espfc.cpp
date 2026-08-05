@@ -19,7 +19,10 @@ int Espfc::load()
 
 int Espfc::begin()
 {
-  _model.state.led.begin(_model.config.pin[PIN_LED_BLINK], _model.config.led.type, _model.config.led.invert);
+  _model.state.led.begin(_model.config.pin[PIN_LED_BLINK], Connect::LED_SIMPLE, _model.config.led.invert);
+  _model.state.ledStrip.begin(_model.config.pin[PIN_LED_STRIP], Connect::LED_STRIP, 0,
+                              _model.config.led.count, _model.config.led.groups, _model.config.led.color,
+                              _model.config.led.idle);
 
   _serial.begin();      // requires _model.load()
   //_model.logStorageResult();
@@ -89,6 +92,7 @@ int FAST_CODE_ATTR Espfc::update(bool externalTrigger)
   _serial.update();
   _buzzer.update();
   _model.state.led.update();
+  _model.state.ledStrip.update();
   _model.state.stats.update();
 
   return 1;

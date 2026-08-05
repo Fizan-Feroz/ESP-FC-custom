@@ -84,7 +84,7 @@ int Wireless::update()
   switch(_status)
   {
     case STOPPED:
-      if(_model.state.mode.rescueConfigMode == RESCUE_CONFIG_ACTIVE && _model.isFeatureActive(FEATURE_SOFTSERIAL))
+      if(_model.isFeatureActive(FEATURE_SOFTSERIAL))
       {
         connect();
         _status = STARTED;

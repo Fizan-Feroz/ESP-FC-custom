@@ -200,6 +200,7 @@ enum Axis {
 };
 
 enum Feature {
+  FEATURE_RX_PWM     = 1 << 13, // betaflight FEATURE_RX_PARALLEL_PWM
   FEATURE_RX_PPM     = 1 << 0,
   FEATURE_RX_SERIAL  = 1 << 3,
   FEATURE_MOTOR_STOP = 1 << 4,
@@ -235,6 +236,14 @@ enum PinFunction {
 #ifdef ESPFC_INPUT
   PIN_INPUT_RX,
 #endif
+#ifdef ESPFC_INPUT_PWM
+  PIN_INPUT_PWM_0,
+  PIN_INPUT_PWM_1,
+  PIN_INPUT_PWM_2,
+  PIN_INPUT_PWM_3,
+  PIN_INPUT_PWM_4,
+  PIN_INPUT_PWM_5,
+#endif
   PIN_OUTPUT_0,
   PIN_OUTPUT_1,
   PIN_OUTPUT_2,
@@ -254,6 +263,7 @@ enum PinFunction {
   PIN_BUTTON,
   PIN_BUZZER,
   PIN_LED_BLINK,
+  PIN_LED_STRIP,
 #ifdef ESPFC_SERIAL_0
   PIN_SERIAL_0_TX,
   PIN_SERIAL_0_RX,
@@ -679,10 +689,26 @@ struct GpsConfig
   uint8_t enableSBAS = 1;        // Enable SBAS (WAAS/EGNOS)
 };
 
+enum LedMode
+{
+  LED_MODE_POSITION,
+  LED_MODE_STATUS,
+  LED_MODE_AUX,
+};
+
+constexpr size_t LED_GROUP_MAX = 4;
+
 struct LedConfig
 {
-  uint8_t invert = 0;
-  int8_t type = 0;
+  uint8_t invert = 0;                // status LED invert
+  uint8_t count = 0;                 // WS2812 pixel count (0 = strip disabled)
+  uint8_t groups = 1;                // number of color groups (per leg / position)
+  uint8_t mode = LED_MODE_POSITION;
+  uint8_t color[LED_GROUP_MAX][3] = { { 255, 255, 255 }, { 255, 40, 40 }, { 40, 255, 40 }, { 40, 40, 255 } };
+  uint8_t idle[3] = { 0, 0, 0 };     // off/idle color (RGB)
+  uint8_t auxCh = 0;                 // aux channel index (0..11) for AUX mode
+  int16_t auxMin = 1300;             // AUX mode on-range start (us)
+  int16_t auxMax = 1700;             // AUX mode on-range end (us)
 };
 
 struct ArmingConfig
@@ -735,6 +761,14 @@ class ModelConfig
 #ifdef ESPFC_INPUT
       [PIN_INPUT_RX] = ESPFC_INPUT_PIN,
 #endif
+#ifdef ESPFC_INPUT_PWM
+      [PIN_INPUT_PWM_0] = ESPFC_INPUT_PWM_PIN_0,
+      [PIN_INPUT_PWM_1] = ESPFC_INPUT_PWM_PIN_1,
+      [PIN_INPUT_PWM_2] = ESPFC_INPUT_PWM_PIN_2,
+      [PIN_INPUT_PWM_3] = ESPFC_INPUT_PWM_PIN_3,
+      [PIN_INPUT_PWM_4] = ESPFC_INPUT_PWM_PIN_4,
+      [PIN_INPUT_PWM_5] = ESPFC_INPUT_PWM_PIN_5,
+#endif
       [PIN_OUTPUT_0] = ESPFC_OUTPUT_0,
       [PIN_OUTPUT_1] = ESPFC_OUTPUT_1,
       [PIN_OUTPUT_2] = ESPFC_OUTPUT_2,
@@ -754,6 +788,11 @@ class ModelConfig
       [PIN_BUTTON] = ESPFC_BUTTON_PIN,
       [PIN_BUZZER] = ESPFC_BUZZER_PIN,
       [PIN_LED_BLINK] = ESPFC_LED_PIN,
+#ifdef ESPFC_LED_STRIP_PIN
+      [PIN_LED_STRIP] = ESPFC_LED_STRIP_PIN,
+#else
+      [PIN_LED_STRIP] = -1,
+#endif
 #ifdef ESPFC_SERIAL_0
       [PIN_SERIAL_0_TX] = ESPFC_SERIAL_0_TX,
       [PIN_SERIAL_0_RX] = ESPFC_SERIAL_0_RX,

@@ -366,6 +366,22 @@ Device::InputDevice * Input::getInputDevice()
     _model.logger.info().log("RX PPM").log(_model.config.pin[PIN_INPUT_RX]).logln(_model.config.input.ppmMode);
     return &_ppm;
   }
+#if defined(ESPFC_INPUT_PWM)
+  else if(_model.isFeatureActive(FEATURE_RX_PWM) && _model.config.pin[PIN_INPUT_PWM_0] != -1)
+  {
+    int8_t pwmPins[Device::InputPWM::CHANNELS] = {
+      _model.config.pin[PIN_INPUT_PWM_0],
+      _model.config.pin[PIN_INPUT_PWM_1],
+      _model.config.pin[PIN_INPUT_PWM_2],
+      _model.config.pin[PIN_INPUT_PWM_3],
+      _model.config.pin[PIN_INPUT_PWM_4],
+      _model.config.pin[PIN_INPUT_PWM_5]
+    };
+    int count = _pwm.begin(pwmPins);
+    _model.logger.info().log("RX PWM").logln(count);
+    return &_pwm;
+  }
+#endif
 #if defined(ESPFC_ESPNOW)
   else if(_model.isFeatureActive(FEATURE_RX_SPI))
   {

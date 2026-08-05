@@ -58,6 +58,16 @@ void Cli::Param::print(Stream& stream) const
     case PARAM_STRING:
       stream.print(addr);
       break;
+    case PARAM_RGB:
+    {
+      uint8_t* rgb = reinterpret_cast<uint8_t*>(addr);
+      stream.print(rgb[0]);
+      stream.print(',');
+      stream.print(rgb[1]);
+      stream.print(',');
+      stream.print(rgb[2]);
+      break;
+    }
     case PARAM_BITMASK:
       stream.print((*reinterpret_cast<int32_t*>(addr) & (1ul << maxLen)) ? 1 : 0);
       break;
@@ -203,6 +213,23 @@ void Cli::Param::update(const char** args) const
       break;
     case PARAM_STRING:
       write(String(v ? v : ""));
+      break;
+    case PARAM_RGB:
+      if (!v) return;
+      {
+        uint8_t* rgb = reinterpret_cast<uint8_t*>(addr);
+        char buf[16];
+        strncpy(buf, v, sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = 0;
+        char* p = buf;
+        for (int i = 0; i < 3; i++)
+        {
+          rgb[i] = static_cast<uint8_t>(std::clamp(atoi(p), 0, 255));
+          char* c = strchr(p, ',');
+          if (!c) break;
+          p = c + 1;
+        }
+      }
       break;
     case PARAM_BITMASK:
       if (!v) return;
@@ -358,7 +385,7 @@ const Cli::Param* Cli::initialize(ModelConfig& c)
   static const char* currentSourceChoices[] = { "NONE", "ADC", nullptr };
   static const char* blackboxDevChoices[] = { "NONE", "FLASH", "SD_CARD", "SERIAL", nullptr };
   static const char* blackboxModeChoices[] = { "NORMAL", "TEST", "ALWAYS", nullptr };
-  static const char* ledTypeChoices[] = { "SIMPLE", "STRIP", nullptr };
+  static const char* ledModeChoices[] = { "POSITION", "STATUS", "AUX", nullptr };
   // clang-format on
 
   size_t i = 0;
@@ -366,6 +393,9 @@ const Cli::Param* Cli::initialize(ModelConfig& c)
 
       Param("feature_gps", &c.featureMask, 7), Param("feature_dyn_notch", &c.featureMask, 29),
       Param("feature_motor_stop", &c.featureMask, 4), Param("feature_rx_ppm", &c.featureMask, 0),
+#ifdef ESPFC_INPUT_PWM
+      Param("feature_rx_pwm", &c.featureMask, 13),
+#endif
       Param("feature_rx_serial", &c.featureMask, 3), Param("feature_rx_spi", &c.featureMask, 25),
       Param("feature_soft_serial", &c.featureMask, 6), Param("feature_telemetry", &c.featureMask, 10),
 
@@ -564,6 +594,14 @@ const Cli::Param* Cli::initialize(ModelConfig& c)
 #ifdef ESPFC_INPUT
       Param("pin_input_rx", &c.pin[PIN_INPUT_RX]),
 #endif
+#ifdef ESPFC_INPUT_PWM
+      Param("pin_input_pwm_0", &c.pin[PIN_INPUT_PWM_0]),
+      Param("pin_input_pwm_1", &c.pin[PIN_INPUT_PWM_1]),
+      Param("pin_input_pwm_2", &c.pin[PIN_INPUT_PWM_2]),
+      Param("pin_input_pwm_3", &c.pin[PIN_INPUT_PWM_3]),
+      Param("pin_input_pwm_4", &c.pin[PIN_INPUT_PWM_4]),
+      Param("pin_input_pwm_5", &c.pin[PIN_INPUT_PWM_5]),
+#endif
       Param("pin_output_0", &c.pin[PIN_OUTPUT_0]), Param("pin_output_1", &c.pin[PIN_OUTPUT_1]),
       Param("pin_output_2", &c.pin[PIN_OUTPUT_2]), Param("pin_output_3", &c.pin[PIN_OUTPUT_3]),
 #if ESPFC_OUTPUT_COUNT > 4
@@ -604,7 +642,18 @@ const Cli::Param* Cli::initialize(ModelConfig& c)
       Param("pin_spi_cs_1", &c.pin[PIN_SPI_CS1]), Param("pin_spi_cs_2", &c.pin[PIN_SPI_CS2]),
 #endif
       Param("pin_buzzer_invert", &c.buzzer.inverted), Param("pin_led_invert", &c.led.invert),
-      Param("pin_led_type", &c.led.type, ledTypeChoices),
+      Param("pin_led_strip", &c.pin[PIN_LED_STRIP]),
+      Param("led_count", &c.led.count),
+      Param("led_groups", &c.led.groups),
+      Param("led_mode", &c.led.mode, ledModeChoices),
+      Param("led_color_0", PARAM_RGB, reinterpret_cast<char*>(&c.led.color[0][0]), nullptr),
+      Param("led_color_1", PARAM_RGB, reinterpret_cast<char*>(&c.led.color[1][0]), nullptr),
+      Param("led_color_2", PARAM_RGB, reinterpret_cast<char*>(&c.led.color[2][0]), nullptr),
+      Param("led_color_3", PARAM_RGB, reinterpret_cast<char*>(&c.led.color[3][0]), nullptr),
+      Param("led_idle", PARAM_RGB, reinterpret_cast<char*>(&c.led.idle[0]), nullptr),
+      Param("led_aux_ch", &c.led.auxCh),
+      Param("led_aux_min", &c.led.auxMin),
+      Param("led_aux_max", &c.led.auxMax),
 
 #ifdef ESPFC_I2C_0
       Param("i2c_speed", &c.i2cSpeed),

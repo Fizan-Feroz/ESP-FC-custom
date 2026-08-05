@@ -26,6 +26,8 @@ class Actuator
     void updateDynLpf();
     void updateRescueConfig();
     void updateLed();
+    void updateLedStrip();
+    void updateStatusLed();
 
     Model& _model;
 };

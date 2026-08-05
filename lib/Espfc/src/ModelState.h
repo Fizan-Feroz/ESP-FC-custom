@@ -511,6 +511,7 @@ struct ModelState
 
   BuzzerState buzzer;
   Connect::StatusLed led;
+  Connect::StatusLed ledStrip;
 
   BatteryState battery;
 

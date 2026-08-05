@@ -3,6 +3,14 @@
 #define ESPFC_INPUT
 #define ESPFC_INPUT_PIN 35 // ppm
 
+#define ESPFC_INPUT_PWM
+#define ESPFC_INPUT_PWM_PIN_0 (-1) // ch1 roll
+#define ESPFC_INPUT_PWM_PIN_1 (-1) // ch2 pitch
+#define ESPFC_INPUT_PWM_PIN_2 (-1) // ch3 throttle
+#define ESPFC_INPUT_PWM_PIN_3 (-1) // ch4 yaw
+#define ESPFC_INPUT_PWM_PIN_4 (-1) // ch5 arm
+#define ESPFC_INPUT_PWM_PIN_5 (-1) // ch6 aux
+
 #define ESPFC_OUTPUT_COUNT 8
 #define ESPFC_OUTPUT_0 27
 #define ESPFC_OUTPUT_1 25
@@ -59,11 +67,14 @@
 #define ESPFC_I2C_0
 #define ESPFC_I2C_0_SCL 22
 #define ESPFC_I2C_0_SDA 21
-#define ESPFC_I2C_0_SOFT
+// NOTE: intentionally NOT using ESPFC_I2C_0_SOFT (EspWire bit-bang).
+// The software I2C timing is corrupted by WiFi/UART/timer interrupts on ESP32,
+// causing random gyro jitter and bus wedges. Use the hardware I2C peripheral instead.
 
 #define ESPFC_BUZZER_PIN 26
 #define ESPFC_BUTTON_PIN 0
 #define ESPFC_LED_PIN 2
+#define ESPFC_LED_STRIP_PIN 16
 
 #define ESPFC_ADC_0
 #define ESPFC_ADC_0_PIN 36
