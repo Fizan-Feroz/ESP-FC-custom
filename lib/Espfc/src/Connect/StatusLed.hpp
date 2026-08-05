@@ -27,6 +27,8 @@ public:
              const uint8_t (*colors)[3] = nullptr, const uint8_t* colorIdle = nullptr);
   void update();
   void setStatus(LedStatus newStatus, bool force = false);
+  void setModeColor(uint8_t r, uint8_t g, uint8_t b);
+  void clearModeColor();
 
 private:
   void _write(uint8_t val);
@@ -37,6 +39,8 @@ private:
   uint8_t _groups;
   uint8_t _colors[4][3];
   uint8_t _colorIdle[3];
+  uint8_t _modeColor[3];
+  bool _modeColorOn;
   LedStatus _status;
   uint32_t _next;
   bool _state;

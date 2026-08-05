@@ -291,6 +291,7 @@ void Actuator::updateLedStrip()
   {
     case LED_MODE_AUX:
     {
+      _model.state.ledStrip.clearModeColor();
       size_t ch = led.auxCh + AXIS_AUX_1;
       if(ch < AXIS_AUX_1 || ch >= AXIS_COUNT)
       {
@@ -302,21 +303,40 @@ void Actuator::updateLedStrip()
       break;
     }
     case LED_MODE_STATUS:
-      if(_model.isModeActive(MODE_ARMED) || _model.state.mode.isLongClickActive())
+      // commercial FC convention: failsafe = fast blink, disarmed = slow blink,
+      // armed = solid flight-mode color (ANGLE green, ACRO red)
+      if(_model.isModeActive(MODE_FAILSAFE))
       {
-        _model.state.ledStrip.setStatus(Connect::LED_ON);
+        _model.state.ledStrip.clearModeColor();
+        _model.state.ledStrip.setStatus(Connect::LED_ERROR);
+      }
+      else if(_model.isModeActive(MODE_ARMED) || _model.state.mode.isLongClickActive())
+      {
+        if(_model.isModeActive(MODE_ANGLE))
+        {
+          _model.state.ledStrip.setModeColor(led.color[2][0], led.color[2][1], led.color[2][2]); // ANGLE - green
+          _model.state.ledStrip.setStatus(Connect::LED_ON);
+        }
+        else
+        {
+          _model.state.ledStrip.setModeColor(led.color[1][0], led.color[1][1], led.color[1][2]); // ACRO - red
+          _model.state.ledStrip.setStatus(Connect::LED_ON);
+        }
       }
       else if(_model.armingDisabled())
       {
+        _model.state.ledStrip.clearModeColor();
         _model.state.ledStrip.setStatus(Connect::LED_ERROR);
       }
       else
       {
+        _model.state.ledStrip.clearModeColor();
         _model.state.ledStrip.setStatus(Connect::LED_OK);
       }
       break;
     case LED_MODE_POSITION:
     default:
+      _model.state.ledStrip.clearModeColor();
       _model.state.ledStrip.setStatus(Connect::LED_ON);
       break;
   }

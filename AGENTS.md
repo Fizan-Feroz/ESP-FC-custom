@@ -24,13 +24,14 @@ set pin_output_3 13        # motor 4 (out0..3 = 27, 25, 4, 13)
 set pin_led_strip 16       # WS2812 strip (RMT, one LED per chunk)
 set led_count 24
 set led_groups 4
-set led_mode POSITION      # POSITION | STATUS | AUX
+set led_mode STATUS        # POSITION | STATUS | AUX (commercial-drone behavior)
 set led_color_0 255,255,255  set led_color_1 255,40,40
 set led_color_2 40,255,40    set led_color_3 40,40,255
 set led_idle 0,0,0
 set feature_soft_serial 1  # WiFi always on at boot
 ```
 Group → LED mapping (count 24, groups 4): LEDs 0-5 front-left, 6-11 front-right, 12-17 back-right, 18-23 back-left.
+LED behavior (STATUS mode, Betaflight-style): **disarmed** = slow blink (100ms on/900ms off) of group colors; **armed + ANGLE** = solid green (led_color_2); **armed + ACRO** = solid red (led_color_1); **failsafe or arming-blocked** = fast triple-blink; armed mode color fills the whole strip (orientation groups hidden). POSITION mode = steady group colors, AUX mode = strip on/off by an aux channel.
 
 ## Wiring (actual build)
 - FS-R6B PWM receiver CH1-6 → GPIO 32, 33, 34, 35, 26, 14 (Roll, Pitch, Throttle, Yaw, Aux1, Aux2). See `docs/pwm-receiver.md`.

@@ -104,6 +104,8 @@ StatusLed::StatusLed()
   static const uint8_t defaults[4][3] = { { 255, 255, 255 }, { 255, 40, 40 }, { 40, 255, 40 }, { 40, 40, 255 } };
   std::copy_n(&defaults[0][0], sizeof(defaults), &_colors[0][0]);
   std::fill_n(_colorIdle, 3, 0);
+  std::fill_n(_modeColor, 3, 0);
+  _modeColorOn = false;
 }
 
 void StatusLed::begin(int8_t pin, uint8_t type, uint8_t invert, uint8_t count, uint8_t groups,
@@ -168,6 +170,24 @@ void StatusLed::setStatus(LedStatus newStatus, bool force)
   _write(_state);
 }
 
+void StatusLed::setModeColor(uint8_t r, uint8_t g, uint8_t b)
+{
+  if (_pin == -1) return;
+  if (_modeColorOn && _modeColor[0] == r && _modeColor[1] == g && _modeColor[2] == b) return;
+  _modeColor[0] = r;
+  _modeColor[1] = g;
+  _modeColor[2] = b;
+  _modeColorOn = true;
+  _write(_state);
+}
+
+void StatusLed::clearModeColor()
+{
+  if (_pin == -1 || !_modeColorOn) return;
+  _modeColorOn = false;
+  _write(_state);
+}
+
 void StatusLed::update()
 {
   if (_pin == -1 || !_pattern) return;
@@ -199,7 +219,7 @@ void StatusLed::_write(uint8_t val)
     for (size_t i = 0; i < _count; i++)
     {
       size_t g = (_groups * i) / _count;
-      const uint8_t* c = val ? _colors[g] : _colorIdle;
+      const uint8_t* c = val ? (_modeColorOn ? _modeColor : _colors[g]) : _colorIdle;
       ws_pixels[i].r = c[0];
       ws_pixels[i].g = c[1];
       ws_pixels[i].b = c[2];
