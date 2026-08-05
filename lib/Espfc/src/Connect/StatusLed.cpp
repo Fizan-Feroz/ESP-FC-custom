@@ -97,10 +97,10 @@ static int LED_ERROR_PATTERN[] = {100, 100, 100, 100, 100, 1500, 0};
 static int LED_ON_PATTERN[] = {100, 0};
 
 // Fade-in/out for LED_FADE: 2s period, recomputed at 25Hz so the RMT write stays
-// non-blocking, dims to 40/255 so orientation colors stay faintly visible.
+// non-blocking, dims fully to off for a drastic breathing effect.
 static constexpr uint32_t FADE_PERIOD_MS = 2000;
 static constexpr uint32_t FADE_STEP_MS = 40;
-static constexpr uint32_t FADE_MIN = 40;
+static constexpr uint32_t FADE_MIN = 0;
 
 StatusLed::StatusLed()
     : _pin(-1), _type(0), _invert(0), _count(0), _groups(1), _alpha(255), _fadeStart(0), _lastFade(0),

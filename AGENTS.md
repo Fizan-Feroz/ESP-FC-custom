@@ -31,7 +31,7 @@ set led_idle 0,0,0
 set feature_soft_serial 1  # WiFi always on at boot
 ```
 Group → LED mapping (count 28, groups 4): LEDs 0-6 front-left, 7-13 front-right, 14-20 back-right, 21-27 back-left.
-LED behavior (STATUS mode, Betaflight-style): **disarmed** = slow blink (100ms on/900ms off) of group colors; **armed + ANGLE** = steady group colors (orientation kept); **armed + ACRO** = group colors slowly fade in/out (2s period, 40ms step, dims to 40/255); **failsafe or arming-blocked** = fast triple-blink. POSITION mode = steady group colors, AUX mode = strip on/off by an aux channel.
+LED behavior (STATUS mode, Betaflight-style): **disarmed** = slow blink (100ms on/900ms off) of group colors; **armed + ANGLE** = steady group colors (orientation kept); **armed + ACRO** = group colors slowly fade in/out (2s period, 40ms step, dims fully to off); **failsafe or arming-blocked** = fast triple-blink. POSITION mode = steady group colors, AUX mode = strip on/off by an aux channel.
 
 ## Wiring (actual build)
 - FS-R6B PWM receiver CH1-6 → GPIO 32, 33, 34, 35, 26, 14 (Roll, Pitch, Throttle, Yaw, Aux1, Aux2). See `docs/pwm-receiver.md`.
