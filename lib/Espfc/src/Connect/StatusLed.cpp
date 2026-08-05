@@ -103,18 +103,40 @@ static constexpr uint32_t ARM_FLASH_MS = 250;
 // Disarm fade-out: strip dims to off over this time before the idle animation.
 static constexpr uint32_t DISARM_FADE_MS = 400;
 
-// Front swipe (ACRO armed): a wave starts at the back of the frame and sweeps
-// forward along BOTH sides at once, holding bright at the nose for a moment so
-// the front direction is obvious. Frontness f runs 0 (back seam) to 2*gs-1
-// (front seam between the two front legs). Both sides share the same f, so a
-// band at position pos lights the back legs + front legs together toward front.
-// Disarmed (LED_IDLE) reuses the geometry as a smooth back-forth ping-pong with
-// a dim color baseline so the group colors stay faintly visible.
+// Front swipe (ACRO armed) and disarmed idle: a wave travels along BOTH sides of
+// the frame at once, ping-ponging back and forth between the back seam and the
+// front seam (the nose), so the motion is continuous with no reset jump.
+// Frontness f runs 0 (back seam) to 2*gs-1 (front seam between the two front
+// legs); both sides share the same f, so a band at position pos lights the back
+// legs + front legs together toward front. Idle adds a slow global hue cycle to
+// the dim wash and a hue-offset bright wave for extra color.
 static constexpr uint32_t SWEEP_UP_MS = 1200;
-static constexpr uint32_t SWEEP_HOLD_MS = 400;
 static constexpr uint32_t SWEEP_STEP_MS = 20;
 static constexpr uint32_t BAND_RADIUS = 2;
-static constexpr uint32_t IDLE_BASELINE = 40;
+
+// Idle (disarmed) color cycle: whole strip washes through hues every ~12s,
+// the traveling wave uses a hue offset ahead of the wash, full bright.
+static constexpr uint32_t IDLE_HUE_STEP_MS = 48;
+static constexpr uint8_t IDLE_WASH = 110;
+static constexpr uint8_t IDLE_BAND_OFFSET = 60;
+
+static void hsvToRgb(uint8_t h, uint8_t s, uint8_t v, uint8_t& r, uint8_t& g, uint8_t& b)
+{
+  uint8_t region = h / 43;
+  uint8_t rem = (uint8_t)((h % 43) * 6);
+  uint8_t p = (uint8_t)(v * (255 - s) / 255);
+  uint8_t q = (uint8_t)(v * (255 - ((s * rem) / 255)) / 255);
+  uint8_t t = (uint8_t)(v * (255 - ((s * (255 - rem)) / 255)) / 255);
+  switch (region)
+  {
+    case 0: r = v; g = t; b = p; break;
+    case 1: r = q; g = v; b = p; break;
+    case 2: r = p; g = v; b = t; break;
+    case 3: r = p; g = q; b = v; break;
+    case 4: r = t; g = p; b = v; break;
+    default: r = v; g = p; b = q; break;
+  }
+}
 
 StatusLed::StatusLed()
     : _pin(-1), _type(0), _invert(0), _count(0), _groups(1), _alpha(255),
@@ -302,18 +324,11 @@ int32_t StatusLed::_frontPos(size_t i) const
 
 int32_t StatusLed::_sweepPos() const
 {
-  uint32_t now = millis();
+  // continuous back-forth ping-pong between the back seam (0) and the front
+  // seam (2*gs-1), no hold and no reset jump
   int32_t frontMax = 2 * (int32_t)(_count / 4) - 1;
-  if (_status == LED_SWEEP)
-  {
-    // one-way ramp to the nose, hold, then restart
-    uint32_t cycle = SWEEP_UP_MS + SWEEP_HOLD_MS;
-    uint32_t ph = (now - _sweepStart) % cycle;
-    return (ph < SWEEP_UP_MS) ? (int32_t)(ph * frontMax / SWEEP_UP_MS) : frontMax;
-  }
-  // LED_IDLE: smooth back-forth ping-pong
   uint32_t cycle = 2 * SWEEP_UP_MS;
-  uint32_t ph = (now - _sweepStart) % cycle;
+  uint32_t ph = (millis() - _sweepStart) % cycle;
   return (ph < SWEEP_UP_MS) ? (int32_t)(ph * frontMax / SWEEP_UP_MS)
                             : (int32_t)((2 * SWEEP_UP_MS - ph) * frontMax / SWEEP_UP_MS);
 }
@@ -335,19 +350,36 @@ void StatusLed::_render(uint8_t val)
   {
     if (_count == 0) return;
 
+    uint32_t now = millis();
+
+    // disarmed idle: dim wash cycling through hues + bright hue-offset wave
+    if (!_fadingOut && _status == LED_IDLE)
+    {
+      int32_t pos = _sweepPos();
+      uint8_t hue = (uint8_t)(now / IDLE_HUE_STEP_MS);
+      uint8_t wr, wg, wb, cr, cg, cb;
+      hsvToRgb(hue, 255, IDLE_WASH, wr, wg, wb);
+      hsvToRgb(hue + IDLE_BAND_OFFSET, 255, 255, cr, cg, cb);
+      for (size_t i = 0; i < _count; i++)
+      {
+        uint8_t band = _bandBrightness(i, pos);
+        uint32_t rm = ((uint32_t)wr * (255 - band) + (uint32_t)cr * band) / 255;
+        uint32_t gm = ((uint32_t)wg * (255 - band) + (uint32_t)cg * band) / 255;
+        uint32_t bm = ((uint32_t)wb * (255 - band) + (uint32_t)cb * band) / 255;
+        ws_pixels[i].r = (uint16_t)rm * _alpha / 255;
+        ws_pixels[i].g = (uint16_t)gm * _alpha / 255;
+        ws_pixels[i].b = (uint16_t)bm * _alpha / 255;
+      }
+      ws2812_update(_count);
+      return;
+    }
+
     bool sweep = false;
     int32_t pos = 0;
-    uint32_t baseline = 0;
-    if (!_fadingOut && _status == LED_SWEEP && millis() >= _flashUntil)
+    if (!_fadingOut && _status == LED_SWEEP && now >= _flashUntil)
     {
       sweep = true;
       pos = _sweepPos();
-    }
-    else if (!_fadingOut && _status == LED_IDLE)
-    {
-      sweep = true;
-      pos = _sweepPos();
-      baseline = IDLE_BASELINE;
     }
 
     for (size_t i = 0; i < _count; i++)
@@ -357,15 +389,11 @@ void StatusLed::_render(uint8_t val)
       if (_status == LED_ANGLE)
       {
         // back legs stay solid, front legs flash together per val
-        on = (g >= 2) || (val || millis() < _flashUntil);
+        on = (g >= 2) || (val || now < _flashUntil);
       }
       const uint8_t* c = on ? _colors[g] : _colorIdle;
       uint32_t mult = _alpha;
-      if (sweep)
-      {
-        uint32_t band = baseline + (_bandBrightness(i, pos) * (255 - baseline)) / 255;
-        mult = (uint32_t)_alpha * band / 255;
-      }
+      if (sweep) mult = (uint32_t)_alpha * _bandBrightness(i, pos) / 255;
       ws_pixels[i].r = (uint16_t)c[0] * mult / 255;
       ws_pixels[i].g = (uint16_t)c[1] * mult / 255;
       ws_pixels[i].b = (uint16_t)c[2] * mult / 255;
