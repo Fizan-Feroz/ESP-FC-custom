@@ -11,7 +11,7 @@ Parallel PWM receiver input on an ESP32 flight controller. Each receiver channel
 | CH3          | Throttle | 34        | Throttle |
 | CH4          | Rudder   | 35        | Yaw     |
 | CH5          | Aux 1    | 26        | Aux1    |
-| CH6          | Aux 2    | 27        | Aux2    |
+| CH6          | Aux 2    | 14        | Aux2    |
 | VCC          | Power    | 5V        |         |
 | GND          | Ground   | GND       |         |
 
@@ -31,7 +31,7 @@ set pin_input_pwm_1 33
 set pin_input_pwm_2 34
 set pin_input_pwm_3 35
 set pin_input_pwm_4 26
-set pin_input_pwm_5 27
+set pin_input_pwm_5 14
 set serial_1 0 0 0
 set pin_buzzer -1
 save
