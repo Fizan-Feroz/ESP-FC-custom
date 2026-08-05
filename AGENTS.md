@@ -21,25 +21,25 @@ set serial_2 0 115200 0    # frees GPIO 16 (was RX_SERIAL) for LED strip
 set pin_buzzer -1          # frees GPIO 26 for PWM ch5
 set pin_spi_cs_1 -1        # frees GPIO 13 (was SPI baro CS) for motor 4
 set pin_output_3 13        # motor 4 (out0..3 = 27, 25, 4, 13)
-set pin_led_strip 16       # WS2812 strip (RMT, one LED per chunk)
-set led_count 24
+set pin_led_strip 16       # WS2812 strip (RMT, full-frame non-blocking write)
+set led_count 28
 set led_groups 4
 set led_mode STATUS        # POSITION | STATUS | AUX (commercial-drone behavior)
-set led_color_0 255,255,255  set led_color_1 255,40,40
+set led_color_0 255,255,255  set led_color_1 255,0,0
 set led_color_2 40,255,40    set led_color_3 40,40,255
 set led_idle 0,0,0
 set feature_soft_serial 1  # WiFi always on at boot
 ```
-Group → LED mapping (count 24, groups 4): LEDs 0-5 front-left, 6-11 front-right, 12-17 back-right, 18-23 back-left.
-LED behavior (STATUS mode, Betaflight-style): **disarmed** = slow blink (100ms on/900ms off) of group colors; **armed + ANGLE** = solid green (led_color_2); **armed + ACRO** = solid red (led_color_1); **failsafe or arming-blocked** = fast triple-blink; armed mode color fills the whole strip (orientation groups hidden). POSITION mode = steady group colors, AUX mode = strip on/off by an aux channel.
+Group → LED mapping (count 28, groups 4): LEDs 0-6 front-left, 7-13 front-right, 14-20 back-right, 21-27 back-left.
+LED behavior (STATUS mode, Betaflight-style): **disarmed** = slow blink (100ms on/900ms off) of group colors; **armed + ANGLE** = steady group colors (orientation kept); **armed + ACRO** = group colors slowly fade in/out (2s period, 40ms step, dims to 40/255); **failsafe or arming-blocked** = fast triple-blink. POSITION mode = steady group colors, AUX mode = strip on/off by an aux channel.
 
 ## Wiring (actual build)
 - FS-R6B PWM receiver CH1-6 → GPIO 32, 33, 34, 35, 26, 14 (Roll, Pitch, Throttle, Yaw, Aux1, Aux2). See `docs/pwm-receiver.md`.
 - Motors: GPIO 27, 25, 4, 13.
-- LED strip data → GPIO 16 (24 pixels, 4 legs in series).
+- LED strip data → GPIO 16 (28 pixels, 4 legs of 7 in series).
 
 ## Gotchas
 - Configurator **Save & Reboot** or factory reset wipes the CLI-only params above (`pin_input_pwm_*`, `serial_1`, etc.) — the Receiver tab then falls back to 12 dead channels. Re-apply via CLI and reboot (input device is chosen at boot). `led_mode` also reverts to `POSITION` after a Configurator session (strip stays solid, no blink) — re-apply `set led_mode STATUS`.
 - MPU6050 intermittently fails to detect at boot; i2c errors count toward arming-block (NO_GYRO). Pending test: `set i2c_speed 100`, short solid-core I2C wires, shared ground, 100 nF cap on MPU VCC.
-- LED strip showed all-white with the old I2S WS2812 driver (`StatusLed.cpp`); replaced with RMT (channel `RMT_CHANNEL_MAX-1`, 50 ns ticks, 350/850 ns bit edges, per-LED chunks because one ESP32 RMT channel holds only 64 items). Verified: FastLED probe lit the strip correctly, and the RMT FC firmware shows the 4 group colors.
+- LED strip showed all-white with the old I2S WS2812 driver (`StatusLed.cpp`); replaced with RMT (channel `RMT_CHANNEL_MAX-1`, 50 ns ticks, 350/850 ns bit edges). `rmt_write_items` with the driver installed points at the item array and the ISR streams it, so the whole frame (28 LEDs + reset) is one non-blocking write; `rmt_wait_tx_done(channel, 0)` guards against rebuilding the array mid-send. Verified: FastLED probe lit the strip correctly, and the RMT FC firmware shows the 4 group colors. LED fade runs at 25 Hz (40 ms step) inside `StatusLed::update()` so the 1 kHz control loop and 50 Hz actuator never stall.
 - Strapping pins 0/2/5/12/15: avoid as inputs.
