@@ -21,6 +21,7 @@ int Wireless::begin()
 void Wireless::startAp()
 {
   bool status = WiFi.softAP("ESP-FC");
+  WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
   _model.logger.info().log("WIFI AP START").logln(status);
 }
 
