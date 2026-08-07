@@ -30,20 +30,31 @@ StorageResult Storage::load(ModelConfig& config) const
   }
 
   uint8_t version = EEPROM.read(addr++);
-  if (EEPROM_VERSION != version)
+  if (version > EEPROM_VERSION)
   {
-    return STORAGE_ERR_BAD_VERSION;
+    return STORAGE_ERR_BAD_VERSION; // saved by a newer firmware
   }
 
   uint16_t size = 0;
   size = EEPROM.read(addr++);
   size |= EEPROM.read(addr++) << 8;
-  if (size != sizeof(ModelConfig))
+  if (size > sizeof(ModelConfig))
   {
     return STORAGE_ERR_BAD_SIZE;
   }
 
-  EEPROM.get(addr, config);
+  ModelConfig def;
+  uint8_t* buf = reinterpret_cast<uint8_t*>(&def);
+  for (uint16_t i = 0; i < size; i++)
+  {
+    buf[i] = EEPROM.read(addr + i);
+  }
+  if (version < EEPROM_VERSION)
+  {
+    // fields appended to ModelConfig after the persisted version
+    def.airModeActivateThrottle = 1400;
+  }
+  config = def;
   return STORAGE_LOAD_SUCCESS;
 }
 

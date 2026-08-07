@@ -205,9 +205,13 @@ void Actuator::updateAirMode()
   {
     _model.state.mode.airmodeAllowed = false;
   }
-  if(armed && !_model.state.mode.airmodeAllowed && _model.state.input.us[AXIS_THRUST] > 1400) // activate airmode in the air
+  else if(_model.state.input.us[AXIS_THRUST] > _model.config.airModeActivateThrottle) // activate airmode in the air
   {
     _model.state.mode.airmodeAllowed = true;
+  }
+  else if(_model.state.input.us[AXIS_THRUST] < _model.config.input.minCheck) // throttle fully low - disable airmode on the ground
+  {
+    _model.state.mode.airmodeAllowed = false;
   }
 }
 

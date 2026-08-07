@@ -864,7 +864,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       r.writeU16(_model.config.input.maxRc);                // max_us
       r.writeU8(_model.config.input.interpolationMode);     // rc interpolation
       r.writeU8(_model.config.input.interpolationInterval); // rc interpolation interval
-      r.writeU16(1500);                                     // airmode activate threshold
+      r.writeU16(_model.config.airModeActivateThrottle);  // airmode activate threshold
       r.writeU8(0);                                         // rx spi prot
       r.writeU32(0);                                        // rx spi id
       r.writeU8(0);                                         // rx spi chan count
@@ -892,7 +892,7 @@ void MspProcessor::processCommand(MspMessage& m, MspResponse& r, Device::SerialD
       {
         _model.config.input.interpolationMode = m.readU8();     // rc interpolation
         _model.config.input.interpolationInterval = m.readU8(); // rc interpolation interval
-        m.readU16();                                            // airmode activate threshold
+        _model.config.airModeActivateThrottle = m.readU16();    // airmode activate threshold
       }
       if (m.remain() >= 6)
       {

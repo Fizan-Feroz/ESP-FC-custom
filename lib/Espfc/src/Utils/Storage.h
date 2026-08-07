@@ -30,7 +30,7 @@ public:
 
 private:
   static constexpr uint8_t EEPROM_MAGIC = 0xA5;
-  static constexpr uint8_t EEPROM_VERSION = 0x01;
+  static constexpr uint8_t EEPROM_VERSION = 0x02; // bump when ModelConfig tail fields are added (migration in load())
   static constexpr size_t EEPROM_SIZE = 2048;
 };
 

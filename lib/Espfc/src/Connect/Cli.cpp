@@ -495,6 +495,8 @@ const Cli::Param* Cli::initialize(ModelConfig& c)
 
       Param("arming_small_angle", &c.arming.smallAngle),
 
+      Param("airmode_activate_throttle", &c.airModeActivateThrottle),
+
       Param("vtx_power", &c.vtx.power), Param("vtx_channel", &c.vtx.channel), Param("vtx_band", &c.vtx.band),
       Param("vtx_low_power_disarm", &c.vtx.lowPowerDisarm),
 

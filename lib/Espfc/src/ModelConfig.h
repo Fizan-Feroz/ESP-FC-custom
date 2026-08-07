@@ -865,6 +865,9 @@ class ModelConfig
     int16_t boardAlignment[3] = {0, 0, 0};
     char modelName[MODEL_NAME_LEN + 1];
 
+    // appended at the end to keep stored config a byte-prefix (Storage::load migrates)
+    int16_t airModeActivateThrottle = 1400;
+
     ModelConfig()
     {
       for(size_t i = 0; i < INPUT_CHANNELS; i++)
