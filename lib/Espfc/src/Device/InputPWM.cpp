@@ -68,23 +68,29 @@ InputStatus FAST_CODE_ATTR InputPWM::update()
 {
   const uint32_t now = micros();
 
+  bool complete = true;
+  for(size_t i = 0; i < CHANNELS; i++)
+  {
+    if(_pins[i] < 0) continue;
+    if(!_state[i].updated) { complete = false; break; }
+  }
+
+  if(complete)
+  {
+    for(size_t i = 0; i < CHANNELS; i++)
+    {
+      if(_pins[i] >= 0) _state[i].updated = false;
+    }
+    _last_frame_us = now;
+    return INPUT_RECEIVED;
+  }
+
   if(now - _last_frame_us > BROKEN_LINK_US)
   {
     return INPUT_LOST;
   }
 
-  for(size_t i = 0; i < CHANNELS; i++)
-  {
-    if(_pins[i] < 0) continue;
-    if(!_state[i].updated) return INPUT_IDLE;
-  }
-
-  for(size_t i = 0; i < CHANNELS; i++)
-  {
-    if(_pins[i] >= 0) _state[i].updated = false;
-  }
-  _last_frame_us = now;
-  return INPUT_RECEIVED;
+  return INPUT_IDLE;
 }
 
 uint16_t FAST_CODE_ATTR InputPWM::get(uint8_t i) const
