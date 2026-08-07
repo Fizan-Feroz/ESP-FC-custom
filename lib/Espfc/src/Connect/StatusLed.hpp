@@ -18,8 +18,11 @@ enum LedStatus
   LED_ERROR,
   LED_ON,
   LED_ANGLE,
+  LED_AIRMODE,
   LED_SWEEP,
   LED_IDLE,
+  LED_THROTTLE,
+  LED_ANGLE_BLOCK,
 };
 
 class StatusLed
@@ -35,7 +38,8 @@ private:
   void _render(uint8_t val);
   void _write(uint8_t val);
   int32_t _frontPos(size_t i) const;
-  int32_t _sweepPos() const;
+  int32_t _sweepPos(bool backForth) const;
+  int32_t _sweepBackToFront() const;
   uint8_t _bandBrightness(size_t i, int32_t pos) const;
   int8_t _pin;
   uint8_t _type;

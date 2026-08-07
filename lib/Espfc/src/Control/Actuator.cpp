@@ -315,11 +315,23 @@ void Actuator::updateLedStrip()
       }
       else if(_model.isModeActive(MODE_ARMED) || _model.state.mode.isLongClickActive())
       {
-        _model.state.ledStrip.setStatus(_model.isModeActive(MODE_ANGLE) ? Connect::LED_ANGLE : Connect::LED_SWEEP);
+        // ANGLE = back legs solid + front legs flashing, AIRMODE = cyan/magenta
+        // dual-color strobe, otherwise (ACRO) = back-first sweep
+        if(_model.isModeActive(MODE_ANGLE)) _model.state.ledStrip.setStatus(Connect::LED_ANGLE);
+        else if(_model.isModeActive(MODE_AIRMODE)) _model.state.ledStrip.setStatus(Connect::LED_AIRMODE);
+        else _model.state.ledStrip.setStatus(Connect::LED_SWEEP);
       }
       else if(_model.armingDisabled())
       {
-        _model.state.ledStrip.setStatus(Connect::LED_ERROR);
+        // throttle not low blocks arming: flash green so it's distinct from
+        // the red triple-blink of other arming-block reasons; ANGLE-mode
+        // small-angle (craft tilted) block flashes blue
+        if(_model.getArmingDisabled(ARMING_DISABLED_THROTTLE))
+          _model.state.ledStrip.setStatus(Connect::LED_THROTTLE);
+        else if(_model.getArmingDisabled(ARMING_DISABLED_ANGLE))
+          _model.state.ledStrip.setStatus(Connect::LED_ANGLE_BLOCK);
+        else
+          _model.state.ledStrip.setStatus(Connect::LED_ERROR);
       }
       else
       {

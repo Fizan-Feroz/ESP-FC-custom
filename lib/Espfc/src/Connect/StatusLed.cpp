@@ -96,6 +96,13 @@ static int LED_OK_PATTERN[] = {100, 900, 0};
 static int LED_ERROR_PATTERN[] = {100, 100, 100, 100, 100, 1500, 0};
 static int LED_ON_PATTERN[] = {100, 0};
 static int LED_FRONT_FLASH_PATTERN[] = {150, 150, 150, 500, 0}; // asymmetric double-flash strobe
+static int LED_AIRMODE_PATTERN[] = {150, 150, 0};               // symmetric dual-color strobe
+static int LED_THROTTLE_PATTERN[] = {200, 200, 0};              // steady green flash for arming-blocked throttle
+static int LED_ANGLE_BLOCK_PATTERN[] = {150, 350, 0};           // blue flash: ANGLE-mode small-angle arming block
+static const uint8_t LED_THROTTLE_COLOR[3] = { 0, 255, 0 };
+static const uint8_t LED_ANGLE_BLOCK_COLOR[3] = { 0, 0, 255 };
+static const uint8_t LED_AIRMODE_FRONT_COLOR[3] = { 255, 0, 0 }; // red
+static const uint8_t LED_AIRMODE_BACK_COLOR[3] = { 0, 0, 255 };  // blue
 
 // Arm flash: full-bright solid flash for this long after arming.
 static constexpr uint32_t ARM_FLASH_MS = 250;
@@ -104,15 +111,17 @@ static constexpr uint32_t ARM_FLASH_MS = 250;
 static constexpr uint32_t DISARM_FADE_MS = 400;
 
 // Front swipe (ACRO armed) and disarmed idle: a wave travels along BOTH sides of
-// the frame at once, ping-ponging back and forth between the back seam and the
-// front seam (the nose), so the motion is continuous with no reset jump.
-// Frontness f runs 0 (back seam) to 2*gs-1 (front seam between the two front
-// legs); both sides share the same f, so a band at position pos lights the back
-// legs + front legs together toward front. Idle adds a slow global hue cycle to
-// the dim wash and a hue-offset bright wave for extra color.
+// the frame. All four legs' data starts at the frame center (nose for the front
+// legs, tail seam for the back legs) and runs out to the tip, so a shared
+// position p in [0, gs-1] lights every leg at once: front legs at pos p sweep
+// center->tip (data order), back legs at pos gs-1-p sweep tip->center (reverse
+// data order). ACRO uses a back-first wave: back legs sweep center->tip during
+// the first SWEEP_UP_MS, then front legs sweep center->tip, as one continuous
+// tail-to-nose pass; idle ping-pongs so its motion is continuous.
 static constexpr uint32_t SWEEP_UP_MS = 1200;
 static constexpr uint32_t SWEEP_STEP_MS = 20;
 static constexpr uint32_t BAND_RADIUS = 2;
+static constexpr uint32_t EDGE_FADE = 256; // 1 LED (fixed-point) fade in/out at each end of the swipe
 
 // Idle (disarmed) color cycle: whole strip washes through hues every ~12s,
 // the traveling wave uses a hue offset ahead of the wash, full bright.
@@ -211,12 +220,22 @@ void StatusLed::setStatus(LedStatus newStatus, bool force)
       _pattern = LED_FRONT_FLASH_PATTERN;
       _flashUntil = _next + ARM_FLASH_MS;
       break;
+    case LED_AIRMODE:
+      _pattern = LED_AIRMODE_PATTERN;
+      _flashUntil = _next + ARM_FLASH_MS;
+      break;
     case LED_SWEEP:
       _pattern = LED_ON_PATTERN;
       _state = HIGH;
       _sweepStart = _next;
       _lastSweep = _next;
       _flashUntil = _next + ARM_FLASH_MS;
+      break;
+    case LED_THROTTLE:
+      _pattern = LED_THROTTLE_PATTERN;
+      break;
+    case LED_ANGLE_BLOCK:
+      _pattern = LED_ANGLE_BLOCK_PATTERN;
       break;
     case LED_IDLE:
       _pattern = LED_ON_PATTERN;
@@ -281,8 +300,8 @@ void StatusLed::update()
     return;
   }
 
-  // armed ANGLE: hold the arm flash solid, then run the front flash pattern
-  if (_status == LED_ANGLE && now < _flashUntil)
+  // armed ANGLE / AIRMODE: hold the arm flash solid, then run the strobe pattern
+  if ((_status == LED_ANGLE || _status == LED_AIRMODE) && now < _flashUntil)
   {
     _render(HIGH);
     return;
@@ -311,39 +330,57 @@ void StatusLed::_write(uint8_t val)
 
 int32_t StatusLed::_frontPos(size_t i) const
 {
-  // Position along the back->front path of each side, in steps. f=0 is the back
-  // seam (where the two back legs meet), f=2*gs-1 is the front seam (between the
-  // two front legs). Left side runs BL then FL, right side runs BR then FR, both
-  // ending at the front seam. gs = LEDs per leg = count / 4.
+  // All four legs' data starts at the frame center (nose for FL/FR, tail seam
+  // for BR/BL) and runs outward to the tip. A shared position p in [0, gs-1]
+  // lights every leg at once: front legs at pos p sweep center->tip (data
+  // order), back legs at pos gs-1-p sweep tip->center (reverse data order), so
+  // all four legs sweep "forward" together.
   int32_t gs = (int32_t)_count / 4;
-  if (i < (size_t)gs)       return (int32_t)i + gs;       // FL, front end at i=gs-1
-  if (i < (size_t)(2 * gs)) return 3 * gs - 1 - (int32_t)i; // FR, front end at i=gs
-  if (i < (size_t)(3 * gs)) return 3 * gs - 1 - (int32_t)i; // BR, front end at i=2gs
-  return (int32_t)i - 3 * gs;                              // BL, front end at i=4gs-1
+  int32_t pos = (int32_t)(i % (size_t)gs);
+  return (i < (size_t)(2 * gs)) ? pos : gs - 1 - pos;
 }
 
-int32_t StatusLed::_sweepPos() const
+int32_t StatusLed::_sweepPos(bool backForth) const
 {
-  // continuous back-forth ping-pong between the back seam (0) and the front
-  // seam (2*gs-1), no hold and no reset jump
-  int32_t frontMax = 2 * (int32_t)(_count / 4) - 1;
+  // one-way swipe or ping-pong over [0, gs-1], returned as fixed-point (1/256
+  // per LED) so the band glides smoothly between LEDs; the swipe resets to the
+  // start, the ping-pong turns around continuously
+  int32_t max = ((int32_t)(_count / 4) - 1) * 256;
+  uint32_t cycle = backForth ? 2 * SWEEP_UP_MS : SWEEP_UP_MS;
+  uint32_t ph = (millis() - _sweepStart) % cycle;
+  uint32_t up = (backForth && ph >= SWEEP_UP_MS) ? cycle - ph : ph;
+  return (int32_t)((uint32_t)max * up / SWEEP_UP_MS);
+}
+
+int32_t StatusLed::_sweepBackToFront() const
+{
+  // ACRO: one global wave that sweeps the back legs first, then the front
+  // legs. Fixed-point (1/256 per LED) position in [0, 2*max] over a full
+  // 2*SWEEP_UP_MS cycle, so each leg-group gets a full SWEEP_UP_MS to travel
+  // center->tip: back legs use pos directly, front legs use pos - max.
+  int32_t max = ((int32_t)(_count / 4) - 1) * 256;
   uint32_t cycle = 2 * SWEEP_UP_MS;
   uint32_t ph = (millis() - _sweepStart) % cycle;
-  return (ph < SWEEP_UP_MS) ? (int32_t)(ph * frontMax / SWEEP_UP_MS)
-                            : (int32_t)((2 * SWEEP_UP_MS - ph) * frontMax / SWEEP_UP_MS);
+  return (int32_t)((uint32_t)(2 * max) * ph / cycle);
 }
 
 uint8_t StatusLed::_bandBrightness(size_t i, int32_t pos) const
 {
-  int32_t dist = _frontPos(i) - pos;
+  // smooth falloff over BAND_RADIUS LEDs; pos and the LED positions are
+  // fixed-point (1/256), so the band's intensity glides as it moves
+  int32_t dist = _frontPos(i) * 256 - pos;
   if (dist < 0) dist = -dist;
-  if (dist > (int32_t)BAND_RADIUS) return 0;
-  return (uint8_t)((BAND_RADIUS - dist) * 255 / BAND_RADIUS);
+  int32_t radius = (int32_t)BAND_RADIUS * 256;
+  if (dist >= radius) return 0;
+  float t = (float)dist / (float)radius;
+  float b = 1.0f - t * t;
+  b *= b; // (1 - t^2)^2: 1 at center, 0 at the edge, smooth at both
+  return (uint8_t)(b * 255.0f + 0.5f);
 }
 
 void StatusLed::_render(uint8_t val)
 {
-  _lastVal = (_status == LED_ANGLE) ? 1 : val;
+  _lastVal = (_status == LED_ANGLE || _status == LED_AIRMODE) ? 1 : val;
   _lastAlpha = _alpha;
 #ifdef ESPFC_LED_WS2812
   if (_type == LED_STRIP)
@@ -355,7 +392,7 @@ void StatusLed::_render(uint8_t val)
     // disarmed idle: dim wash cycling through hues + bright hue-offset wave
     if (!_fadingOut && _status == LED_IDLE)
     {
-      int32_t pos = _sweepPos();
+      int32_t pos = _sweepPos(true);
       uint8_t hue = (uint8_t)(now / IDLE_HUE_STEP_MS);
       uint8_t wr, wg, wb, cr, cg, cb;
       hsvToRgb(hue, 255, IDLE_WASH, wr, wg, wb);
@@ -379,7 +416,7 @@ void StatusLed::_render(uint8_t val)
     if (!_fadingOut && _status == LED_SWEEP && now >= _flashUntil)
     {
       sweep = true;
-      pos = _sweepPos();
+      pos = _sweepBackToFront();
     }
 
     for (size_t i = 0; i < _count; i++)
@@ -391,9 +428,31 @@ void StatusLed::_render(uint8_t val)
         // back legs stay solid, front legs flash together per val
         on = (g >= 2) || (val || now < _flashUntil);
       }
+      else if (_status == LED_AIRMODE)
+      {
+        // airmode: whole strip strobes together; front legs cyan, back legs magenta
+        on = (val || now < _flashUntil);
+      }
       const uint8_t* c = on ? _colors[g] : _colorIdle;
+      if (_status == LED_THROTTLE) c = on ? LED_THROTTLE_COLOR : _colorIdle;
+      if (_status == LED_ANGLE_BLOCK) c = on ? LED_ANGLE_BLOCK_COLOR : _colorIdle;
+      if (_status == LED_AIRMODE) c = on ? ((g >= 2) ? LED_AIRMODE_BACK_COLOR : LED_AIRMODE_FRONT_COLOR) : _colorIdle;
       uint32_t mult = _alpha;
-      if (sweep) mult = (uint32_t)_alpha * _bandBrightness(i, pos) / 255;
+      if (sweep)
+      {
+        // back legs lead (band at pos), front legs follow (band at pos - max);
+        // both sweep center->tip in their own half of the 2*SWEEP_UP_MS cycle
+        int32_t maxPos = ((int32_t)(_count / 4) - 1) * 256;
+        int32_t band = (g >= 2) ? pos : pos - maxPos;
+        uint32_t b = _bandBrightness(i, band);
+        uint32_t fade = 255;
+        if (pos < (int32_t)EDGE_FADE)
+          fade = (uint32_t)pos * 255 / EDGE_FADE;
+        else if (pos > 2 * maxPos - (int32_t)EDGE_FADE)
+          fade = (uint32_t)(2 * maxPos - pos) * 255 / EDGE_FADE;
+        b = b * fade / 255;
+        mult = (uint32_t)_alpha * b / 255;
+      }
       ws_pixels[i].r = (uint16_t)c[0] * mult / 255;
       ws_pixels[i].g = (uint16_t)c[1] * mult / 255;
       ws_pixels[i].b = (uint16_t)c[2] * mult / 255;
