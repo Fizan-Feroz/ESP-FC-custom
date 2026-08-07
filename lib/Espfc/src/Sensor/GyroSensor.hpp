@@ -29,6 +29,8 @@ public:
 
 private:
   void calibrate();
+  bool reinit();
+  void tryReinit();
 
   Utils::Sma<VectorFloat, 8> _sma;
   Utils::Sma<VectorFloat, 8> _dyn_notch_sma;
@@ -43,6 +45,9 @@ private:
   float _rpm_min_freq;
   float _rpm_max_freq;
   float _rpm_q;
+  uint32_t _read_fail_count;
+  uint32_t _health_count;
+  uint32_t _last_reinit_time;
 
   Model& _model;
   Device::GyroDevice* _gyro;

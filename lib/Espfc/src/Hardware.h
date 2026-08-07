@@ -57,6 +57,8 @@ public:
   static void restart(const Model& model);
 
 private:
+  bool selectGyroDevice(GyroDeviceType type) const;
+
   Model& _model;
 };
 

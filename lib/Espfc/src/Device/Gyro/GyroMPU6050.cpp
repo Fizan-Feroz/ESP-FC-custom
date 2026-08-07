@@ -103,16 +103,40 @@ int GyroMPU6050::begin(BusDevice* bus, uint8_t addr)
 {
   setBus(bus, addr);
 
-  if (!testConnection()) return 0;
+  // the sensor may not answer right after power-on, retry before giving up
+  bool connected = false;
+  for (int attempt = 0; attempt < 5; attempt++)
+  {
+    if (testConnection())
+    {
+      connected = true;
+      break;
+    }
+    delay(50);
+  }
+  if (!connected) return 0;
 
   uint8_t res = 0;
 
   res = _bus->writeByte(_addr, MPU6050_RA_PWR_MGMT_1, MPU6050_RESET);
   delay(100);
 
-  // disable sleep mode and set clock source
-  res = _bus->writeByte(_addr, MPU6050_RA_PWR_MGMT_1, MPU6050_CLOCK_PLL_XGYRO);
-  delay(15);
+  // disable sleep mode and set clock source,
+  // verify by read-back because a failed write leaves the chip in sleep
+  bool awake = false;
+  for (int attempt = 0; attempt < 5; attempt++)
+  {
+    res = _bus->writeByte(_addr, MPU6050_RA_PWR_MGMT_1, MPU6050_CLOCK_PLL_XGYRO);
+    delay(15);
+    uint8_t pwrMgmt = MPU6050_RESET;
+    if (_bus->readByte(_addr, MPU6050_RA_PWR_MGMT_1, &pwrMgmt) == 1 && !(pwrMgmt & (1 << MPU6050_PWR1_SLEEP_BIT)))
+    {
+      awake = true;
+      break;
+    }
+    delay(50);
+  }
+  if (!awake) return 0;
 
   // reset I2C master and sensors signal path
   res = _bus->writeByte(_addr, MPU6050_USER_CTRL, MPU6050_I2C_MST_RESET | MPU6050_SIG_COND_RESET);

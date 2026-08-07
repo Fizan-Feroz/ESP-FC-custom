@@ -439,7 +439,7 @@ class Model
       // init timers
       // sample rate = clock / ( divider + 1)
       state.gyro.timer.setRate(state.gyro.rate);
-      int accelRate = Utils::alignToClock(state.gyro.timer.rate, 500);
+      int accelRate = Utils::alignToClock(state.gyro.timer.rate, 250);
       state.accel.timer.setRate(state.gyro.timer.rate, state.gyro.timer.rate / accelRate);
       state.loopTimer.setRate(state.gyro.timer.rate, config.loopSync);
       state.mixer.timer.setRate(state.loopTimer.rate, config.mixerSync);

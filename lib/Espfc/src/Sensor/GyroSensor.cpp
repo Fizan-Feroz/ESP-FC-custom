@@ -11,7 +11,7 @@ namespace Espfc::Sensor {
 static constexpr float ESPFC_FUZZY_ACCEL_ZERO = 0.05f;
 static constexpr float ESPFC_FUZZY_GYRO_ZERO = 0.20f;
 
-GyroSensor::GyroSensor(Model& model): _dyn_notch_denom(1), _model(model) {}
+GyroSensor::GyroSensor(Model& model): _dyn_notch_denom(1), _read_fail_count(0), _health_count(0), _last_reinit_time(0), _model(model) {}
 
 GyroSensor::~GyroSensor() {}
 
@@ -74,7 +74,28 @@ int FAST_CODE_ATTR GyroSensor::read()
 
   Utils::Stats::Measure measure(_model.state.stats, COUNTER_GYRO_READ);
 
-  _gyro->readGyro(_model.state.gyro.raw);
+  if (!_gyro->readGyro(_model.state.gyro.raw))
+  {
+    // sensor stopped responding, try to bring it back on the same bus
+    _read_fail_count++;
+    if (_read_fail_count >= 10)
+    {
+      _read_fail_count = 0;
+      tryReinit();
+    }
+    return 0;
+  }
+  _read_fail_count = 0;
+
+  // periodic health check: a stuck/sleeping chip reads ~0 g accel
+  if (_model.accelActive() && ++_health_count >= 125)
+  {
+    _health_count = 0;
+    if (_model.state.accel.raw.getMagnitude() < 410)
+    {
+      tryReinit();
+    }
+  }
 
   VectorFloat input = static_cast<VectorFloat>(_model.state.gyro.raw) * _model.state.gyro.scale;
   align(input, _model.config.gyro.align);
@@ -90,6 +111,32 @@ int FAST_CODE_ATTR GyroSensor::read()
   }
 
   return 1;
+}
+
+bool GyroSensor::reinit()
+{
+  const Device::BusDevice* bus = _gyro->getBus();
+  if (!bus) return false;
+  if (!_gyro->begin(const_cast<Device::BusDevice*>(bus), _gyro->getAddress())) return false;
+  _gyro->setDLPFMode(_model.config.gyro.dlpf);
+  _gyro->setRate(_gyro->getRate());
+  return true;
+}
+
+void GyroSensor::tryReinit()
+{
+  uint32_t now = millis();
+  if (now - _last_reinit_time < 2000) return;
+  _last_reinit_time = now;
+  _model.logger.info().logln("GYRO REINIT");
+  if (reinit())
+  {
+    _model.logger.info().logln("GYRO REINIT OK");
+  }
+  else
+  {
+    _model.logger.err().logln("GYRO REINIT FAILED");
+  }
 }
 
 int FAST_CODE_ATTR GyroSensor::filter()
