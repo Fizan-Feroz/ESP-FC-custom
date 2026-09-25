@@ -5,7 +5,10 @@
 
 namespace Espfc::Control {
 
-Actuator::Actuator(Model& model): _model(model) {}
+Actuator::Actuator(Model& model): _model(model)
+{
+  for(size_t i = 0; i < MODE_COUNT; i++) _modeDebounce[i] = 0;
+}
 
 int Actuator::begin()
 {
@@ -13,6 +16,7 @@ int Actuator::begin()
   _model.state.mode.maskPrev = 0;
   _model.state.mode.maskPresent = 0;
   _model.state.mode.maskSwitch = 0;
+  for(size_t i = 0; i < MODE_COUNT; i++) _modeDebounce[i] = 0;
   for(size_t i = 0; i < ACTUATOR_CONDITIONS; i++)
   {
     const auto &c = _model.config.conditions[i];
@@ -135,6 +139,26 @@ void Actuator::updateModeMask()
     if(val > min && val < max)
     {
       newMask |= 1 << c->id;
+    }
+  }
+
+  // debounce mode changes so a single glitched frame cannot toggle a mode
+  for(size_t i = 0; i < MODE_COUNT; i++)
+  {
+    bool rawOn = newMask & (1 << i);
+    bool curOn = _model.state.mode.mask & (1 << i);
+    if(rawOn == curOn)
+    {
+      _modeDebounce[i] = 0;
+    }
+    else if(_modeDebounce[i] < MODE_DEBOUNCE_FRAMES)
+    {
+      _modeDebounce[i]++;
+      newMask ^= (1 << i); // keep current state until the new state is stable
+    }
+    else
+    {
+      _modeDebounce[i] = 0;
     }
   }
 

@@ -124,6 +124,10 @@ InputStatus FAST_CODE_ATTR Input::readInputs()
     _model.state.debug[1] = _model.state.input.rxFailSafe;
     _model.state.debug[2] = _model.state.input.channelsValid;
     _model.state.debug[3] = _model.state.input.lossTime / (100 * 1000);
+    _model.state.debug[4] = _model.state.input.us[AXIS_AUX_1];
+    _model.state.debug[5] = _model.state.input.us[AXIS_AUX_1 + 1];
+    _model.state.debug[6] = _model.state.input.raw[4];
+    _model.state.debug[7] = _model.state.input.raw[5];
   }
 
   return status;

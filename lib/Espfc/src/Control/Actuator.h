@@ -29,6 +29,9 @@ class Actuator
     void updateLedStrip();
     void updateStatusLed();
 
+    static constexpr uint8_t MODE_DEBOUNCE_FRAMES = 25; // ~50ms at 500Hz loop
+    uint8_t _modeDebounce[MODE_COUNT];
+
     Model& _model;
 };
 
