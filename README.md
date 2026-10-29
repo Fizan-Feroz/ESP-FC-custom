@@ -29,6 +29,7 @@ In this repository you can find firmware code that allows you to build your own 
 > Before you begin, **read the following documentation carefully first!**.
 
  * [Setup Guide](/docs/setup.md)
+ * [Hardware & Custom PCB Guide](/docs/hardware.md)
  * [Wiring](/docs/wiring.md)
  * [CLI Commands](/docs/cli.md)
  * [WIFI and ESP-NOW Receiver](/docs/wireless.md)
